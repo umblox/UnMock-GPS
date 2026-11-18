@@ -11,46 +11,60 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 class UnMockGPS : IXposedHookLoadPackage {
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // 1. THE LOCATION FIX (Mimic the Military Jammer)
         try {
             val locationClass = Location::class.java.name
 
-            // Beat standard mock detectors
-            XposedHelpers.findAndHookMethod(locationClass, lpparam.classLoader, "isMock", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    param.result = false
-                }
-            })
-            XposedHelpers.findAndHookMethod(locationClass, lpparam.classLoader, "isFromMockProvider", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    param.result = false
-                }
-            })
+            val methods = listOf(
+                "isMock",
+                "isFromMockProvider",
+                "getProvider",
+                "getLatitude",
+                "getLongitude",
+                "getAccuracy",
+                "hasAccuracy",
+                "getAltitude",
+                "hasAltitude",
+                "getSpeed",
+                "hasSpeed",
+                "getBearing",
+                "hasBearing",
+                "getTime",
+                "getElapsedRealtimeNanos",
+                "getExtras"
+            )
 
-            // Add realistic hardware accuracy and altitude
-            XposedHelpers.findAndHookMethod(locationClass, lpparam.classLoader, "getAccuracy", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    param.result = 5.0f
-                } // 5 meters
-            })
-            XposedHelpers.findAndHookMethod(locationClass, lpparam.classLoader, "hasAccuracy", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    param.result = true
-                }
-            })
+            for (method in methods) {
+                XposedHelpers.findAndHookMethod(
+                    locationClass,
+                    lpparam.classLoader,
+                    method,
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            val value = when (val result = param.result) {
+                                null -> "null"
+                                is Bundle -> "Bundle(size=${result.size()})"
+                                else -> result.toString()
+                            }
 
-            // Scrub the Bundle of hidden fake-gps flags
-            XposedHelpers.findAndHookMethod(locationClass, lpparam.classLoader, "getExtras", object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    val extras = param.result as? Bundle
-                    if (extras != null) {
-                        extras.remove("mockLocation")
-                        param.result = extras
+                            XposedBridge.log(
+                                "UnMockDiagnostic: " +
+                                    "pkg=${lpparam.packageName} " +
+                                    "method=$method " +
+                                    "result=$value"
+                            )
+                        }
                     }
-                }
-            })
+                )
+            }
+
+            XposedBridge.log(
+                "UnMockDiagnostic: modul read-only aktif di ${lpparam.packageName}; " +
+                    "tidak mengubah hasil method Location."
+            )
         } catch (e: Throwable) {
-            XposedBridge.log("UnmockDebug: Location hook failed ${e.message}")
+            XposedBridge.log(
+                "UnMockDiagnostic error: ${e.javaClass.name}: ${e.message}"
+            )
         }
     }
 }
